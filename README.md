@@ -19,11 +19,16 @@ This is a Blender add-on that allows you to control LED strips connected to an A
 ## Usage
 
 1. Connect your Arduino board and LED strips to your computer.
-2. In Blender, go to the `Arduino LED Strip Control` panel.
-3. Select your Arduino board and LED strips.
-4. Assign materials to the LED strips.
-5. Generate and upload the Arduino code.
-6. Control the LED strips from within Blender.
+2. In Blender, go to the Output tab.
+3. Create a new Arduino device by clicking the Add Arduino button in the Arduino LED Strip Control panel.
+4. Enter the IP address and port number of your Arduino device.
+5. Create a new LED strip by clicking the Add LED Strip button in the Arduino LED Strip Control panel.
+6. Change the pin numbers for the LED strip if necessary.
+7. Assign a material to the LED strip.
+8. Open the generated Arduino code in the Arduino IDE.
+9. Enter your Wi-Fi network's SSID and password in the corresponding fields.
+10. Upload the edited code to the Arduino board.
+11. Control the LED strips from within Blender.
 
 ## License
 
