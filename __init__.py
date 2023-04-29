@@ -14,7 +14,7 @@ bl_info = {
     "version": (1, 0),
     "blender": (3, 0, 0),
     "location": "Properties > Output",
-    "description": "A Blender plugin for controlling LED strips connected to an Arduino board, with automatic code generation."",
+    "description": "A Blender plugin for controlling LED strips connected to an Arduino board, with automatic code generation.",
     "warning": "",
     "wiki_url": "",
     "category": "Lighting",

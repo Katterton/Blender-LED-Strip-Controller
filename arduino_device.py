@@ -1,89 +1,109 @@
-import asyncio
-import json
-import os
-import websockets
+
+import socket
 import bpy
+from .led_strip import LedStrip
+class ArduinoDevice(bpy.types.PropertyGroup):
+    is_running: bpy.props.BoolProperty(default=False)
+    ip_address: bpy.props.StringProperty(name="IP Address", default="192.168.0.105")
+    port: bpy.props.IntProperty(name="Port", default=4210)
+    index: bpy.props.IntProperty(name="index", default=0)
+    led_strips: bpy.props.CollectionProperty(type=LedStrip)
+    sock: socket.socket = None
 
+    def start(self):
+        if not self.is_running:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            bpy.app.handlers.frame_change_pre.append(self.send_color_data)
+            self.is_running = True
 
-async def play_animation(websocket, path):
-    bpy.ops.screen.animation_play()
-    await websocket.send("Playing animation")
+    def stop(self):
+        if self.is_running:
+            if self.send_color_data in bpy.app.handlers.frame_change_pre:
+                bpy.app.handlers.frame_change_pre.remove(self.send_color_data)
+            self.is_running = False
 
-
-async def pause_animation(websocket, path):
-    bpy.ops.screen.animation_cancel()
-    await websocket.send("Paused animation")
-
-
-async def send_materials_list(websocket, path):
-    materials = bpy.data.materials
-
-    response = {"type": "materials_list", "data": []}
-    for material in materials:
-        response["data"].append(material.name)
-
-    await websocket.send(json.dumps(response))
-
-
-async def send_led_strips_list(websocket, path):
-    devices = bpy.context.scene.arduino_devices
-
-    response = {"type": "led_strips_list", "data": []}
-    for device in devices:
-        for led_strip in device.led_strips:
-            material_name = led_strip.material.name if led_strip.material else "None"
-            response["data"].append(
-                {
-                    "device_ip": device.ip_address,
-                    "device_port": device.port,
-                    "led_strip_index": led_strip.index,
-                    "material_name": material_name,
-                }
-            )
-
-    await websocket.send(json.dumps(response))
-
-
-async def assign_material(websocket, path):
-    data = await websocket.recv()
-    data = json.loads(data)
-
-    material_name = data["material_name"]
-    led_strip_index = int(data["led_strip_index"])
-    device_index = int(data["device_index"])
-
-    material = bpy.data.materials.get(material_name)
-    device = bpy.context.scene.arduino_devices[device_index]
-    led_strip = device.led_strips[led_strip_index]
-    led_strip.material = material
-
-    await websocket.send("Material assigned")
-
-
-async def handler(websocket, path):
-    while True:
-        try:
-            request = await websocket.recv()
-            if request == "play":
-                await play_animation(websocket, path)
-            elif request == "pause":
-                await pause_animation(websocket, path)
-            elif request == "materials":
-                await send_materials_list(websocket, path)
-            elif request == "led_strips":
-                await send_led_strips_list(websocket, path)
-            elif request.startswith("assign_material"):
-                await assign_material(websocket, path)
-        except websockets.exceptions.ConnectionClosed:
-            break
-
-
-def start_websocket_server():
-    start_server = websockets.serve(handler, "localhost", 8080)
-
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
-
-
-if __name__ == "__main__":
-    start_websocket_server()
+    def send_color_data(self,x,y):
+        for led_strip in self.led_strips:
+            material = led_strip.material
+            color_ramp = material.node_tree.nodes["ColorRamp"]
+            packet = bytearray(1 + led_strip.num_leds * 3)
+            packet[0] = led_strip.index+1
+            led_index = 0
+            for i in range(led_strip.num_leds):
+                x = i * (1/led_strip.num_leds)
+                color = color_ramp.color_ramp.evaluate(x)[:3]
+                r, g, b = [int(c * 255) for c in color]
+                packet[1 + led_index * 3] = b
+                packet[2 + led_index * 3] = r
+                packet[3 + led_index * 3] = g
+                led_index += 1
+                if led_index >= led_strip.num_leds:
+                    break
+            self.sock.sendto(packet, (self.ip_address, self.port))
+    def generate_arduino_code(self):
+        arduino_code = ''
+        arduino_code += '#include <ESP8266WiFi.h>\n'
+        arduino_code += '#include <WiFiUdp.h>\n'
+        arduino_code += '#include <FastLED.h>\n'
+        arduino_code += '\n'
+        for i, strip in enumerate(self.led_strips):
+            arduino_code += '#define NUM_LEDS' + str(i+1) + ' ' + str(strip['num_leds']) + '\n'
+            arduino_code += 'CRGB leds' + str(i+1) + '[NUM_LEDS' + str(i+1) + '];\n'
+        arduino_code += '\n'
+        arduino_code += 'const char* ssid = "' + self.ip_address + '";\n'
+        arduino_code += 'const char* password = "' + str(self.port) + '";\n'
+        arduino_code += 'const size_t pbuf_unit_size = 1024;\n'
+        arduino_code += 'WiFiUDP Udp;\n'
+        arduino_code += 'unsigned int localUdpPort = ' + str(self.port) + ';\n'
+        arduino_code += 'char incomingPacket[1024];\n'
+        arduino_code += 'char  replyPacket[] = "Hi there! Got the message :-)";\n'
+        arduino_code += '\n'
+        arduino_code += 'void initLEDs() {\n'
+        for i, strip in enumerate(self.led_strips):
+             arduino_code += '  FastLED.addLeds<NEOPIXEL, D' + str(i+2) + '>(leds' + str(i+1) + ', NUM_LEDS' + str(i+1) + ');\n'
+        arduino_code += '}\n'
+        arduino_code += '\n'
+        arduino_code += 'void setup() {\n'
+        arduino_code += '  Serial.begin(115200);\n'
+        arduino_code += '  Serial.println();\n'
+        arduino_code += '\n'
+        arduino_code += '  // Connect to WiFi network\n'
+        arduino_code += '  Serial.printf("Connecting to %s ", ssid);\n'
+        arduino_code += '  WiFi.begin(ssid, password);\n'
+        arduino_code += '  while (WiFi.status() != WL_CONNECTED)\n'
+        arduino_code += '  {\n'
+        arduino_code += '    delay(500);\n'
+        arduino_code += '    Serial.print(".");\n'
+        arduino_code += '  }\n'
+        arduino_code += '  Serial.println(" connected");\n'
+        arduino_code += '\n'
+        arduino_code += '  // Initialize LEDs\n'
+        arduino_code += '  initLEDs();\n'
+        arduino_code += '\n'
+        arduino_code += '  // Initialize UDP connection\n'
+        arduino_code += '  Udp.begin(localUdpPort);\n'
+        arduino_code += '  Serial.printf("Now listening at IP %s, UDP port %d\\n", WiFi.localIP().toString().c_str(), localUdpPort);\n'
+        arduino_code += '}\n'
+        arduino_code += '\n'
+        arduino_code += 'void loop() {\n'
+        arduino_code += '  int packetSize = Udp.parsePacket();\n'
+        arduino_code += '  if (packetSize)\n  {\n'
+        arduino_code += '    // receive incoming UDP packets\n'
+        arduino_code += '    Serial.printf("Received %d bytes from %s, port %d\\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());\n'
+        arduino_code += '    int len = Udp.read(incomingPacket, 255);\n'
+        arduino_code += '    if (len > 0)\n'
+        arduino_code += '    {\n'
+        arduino_code += '      incomingPacket[len] = 0;\n'
+        arduino_code += '    }\n'
+        for i, strip in enumerate(self.led_strips):
+            arduino_code += '    if (int(incomingPacket[0]) == ' + str(i+1) + ')\n'
+            arduino_code += '    {\n'
+            arduino_code += '      for (int j = 0; j < NUM_LEDS' + str(i+1) + '; j++)\n'
+            arduino_code += '      {\n'
+            arduino_code += '        leds' + str(i+1) + '[j] = CRGB(int(incomingPacket[3*j+2]), int(incomingPacket[3*j+3]), int(incomingPacket[3*j+1]));\n'
+            arduino_code += '      }\n'
+            arduino_code += '    }\n'
+        arduino_code += '    FastLED.show();\n'
+        arduino_code += '  }\n'
+        arduino_code += '}\n'
+        return arduino_code
