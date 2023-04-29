@@ -28,7 +28,8 @@ This is a Blender add-on that allows you to control LED strips connected to an A
 8. Open the generated Arduino code in the Arduino IDE.
 9. Enter your Wi-Fi network's SSID and password in the corresponding fields.
 10. Upload the edited code to the Arduino board.
-11. Control the LED strips from within Blender.
+11. Edit the Color Ramp of the assigned material to change the LED strip's color.
+12. The LED strips update on frame changes only, so hit the play button to send data to the Arduino board and control the LED strips from within Blender.
 
 ## License
 
