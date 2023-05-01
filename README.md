@@ -11,7 +11,7 @@ This is a Blender add-on that allows you to control LED strips connected to an A
 
 ## Installation
 
-1. Download the latest release from the [releases page](https://github.com/yourusername/your-repo/releases).
+1. Download the latest release from the [releases page](https://github.com/Katterton/Blender-LED-Strip-Controller/releases).
 2. In Blender, go to `Edit` > `Preferences` > `Add-ons`.
 3. Click `Install...` and select the downloaded ZIP file.
 4. Enable the add-on by checking the checkbox next to it.
